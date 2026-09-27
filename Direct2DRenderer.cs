@@ -18,6 +18,8 @@ internal sealed class Direct2DRenderer : IDisposable
     private readonly IDWriteTextFormat _gaugeFormat;
     private readonly IDWriteTextFormat _gearFormat;
     private readonly IDWriteTextFormat _angleFormat;
+    private ThemePalette _palette;
+    private float _zoomScale;
     private ID2D1HwndRenderTarget? _target;
     private GraphBrushes? _graphBrushes;
     private SteeringBrushes? _wheelBrushes;
@@ -25,9 +27,12 @@ internal sealed class Direct2DRenderer : IDisposable
     private ID2D1SolidColorBrush? _panel;
     private ID2D1SolidColorBrush? _border;
 
-    public Direct2DRenderer(nint hwnd)
+    public Direct2DRenderer(nint hwnd, WidgetSettings settings)
     {
         _hwnd = hwnd;
+        _palette = settings.IsLightTheme ? ThemePalette.Light : ThemePalette.Dark;
+        _zoomScale = settings.ZoomPercent / 100f;
+        ApplySettings(settings);
         _factory = D2D1.D2D1CreateFactory<ID2D1Factory>(Vortice.Direct2D1.FactoryType.SingleThreaded, DebugLevel.None);
         _writeFactory = DWrite.DWriteCreateFactory<IDWriteFactory>(Vortice.DirectWrite.FactoryType.Shared);
         _gaugeFormat = CenteredFormat(16);
@@ -48,6 +53,22 @@ internal sealed class Direct2DRenderer : IDisposable
     public void AddSample(TelemetrySample sample) =>
         _graph.AddSample(sample.Throttle, sample.Brake, sample.Clutch, sample.TcActive, sample.AbsActive);
 
+    public void ApplySettings(WidgetSettings settings)
+    {
+        _graph.ShowThrottle = settings.ShowThrottle;
+        _graph.ShowBrake = settings.ShowBrake;
+        _graph.ShowClutch = settings.ShowClutch;
+        _graph.TimeSpanSeconds = settings.GraphTimeSpanSeconds;
+        ThemePalette palette = settings.IsLightTheme ? ThemePalette.Light : ThemePalette.Dark;
+        if (_palette != palette)
+        {
+            _palette = palette;
+            ReleaseTarget();
+        }
+        _zoomScale = settings.ZoomPercent / 100f;
+        _target?.SetDpi(96 * _zoomScale, 96 * _zoomScale);
+    }
+
     public void Resize(int width, int height)
     {
         if (_target is not null && width > 0 && height > 0)
@@ -65,28 +86,42 @@ internal sealed class Direct2DRenderer : IDisposable
 
         EnsureTarget(width, height);
         ID2D1HwndRenderTarget target = _target!;
+        float logicalWidth = width / _zoomScale;
+        float logicalHeight = height / _zoomScale;
         GraphBrushes graphBrushes = _graphBrushes!;
         TelemetrySample? displayed = sample?.Status is ACEvoStatus.Live or ACEvoStatus.Pause or ACEvoStatus.Replay
             ? sample
             : null;
 
         target.BeginDraw();
-        target.Clear(Colors.FromRgb(14, 15, 18));
-        target.DrawRoundedRectangle(new RoundedRectangle(new RectangleF(0.5f, 0.5f, width - 1, height - 1), 9, 9),
+        target.Clear(_palette.OverlayBackground);
+        target.DrawRoundedRectangle(new RoundedRectangle(new RectangleF(0.5f, 0.5f, logicalWidth - 1, logicalHeight - 1), 9, 9),
             _border!, 1);
 
         const float top = 17;
         const float panelHeight = 180;
         const float graphX = 12;
-        float graphWidth = Math.Max(1, width - 427);
+        int visiblePedals = (_graph.ShowClutch ? 1 : 0) + (_graph.ShowBrake ? 1 : 0) + (_graph.ShowThrottle ? 1 : 0);
+        float gearX = logicalWidth - 277;
+        float graphWidth = Math.Max(1, visiblePedals == 0
+            ? gearX - graphX - 12
+            : gearX - graphX - 24 - (visiblePedals * 40 - 6));
         float gaugeX = graphX + graphWidth + 12;
-        float gearX = gaugeX + 114 + 12;
         float wheelX = gearX + 97 + 8;
 
         _graph.Draw(target, graphBrushes, graphX, top, graphWidth, panelHeight);
-        DrawGauge(target, gaugeX, top, panelHeight, displayed?.Clutch ?? 0, graphBrushes.Clutch);
-        DrawGauge(target, gaugeX + 40, top, panelHeight, displayed?.Brake ?? 0, graphBrushes.Brake);
-        DrawGauge(target, gaugeX + 80, top, panelHeight, displayed?.Throttle ?? 0, graphBrushes.Throttle);
+        if (_graph.ShowClutch)
+        {
+            DrawGauge(target, gaugeX, top, panelHeight, displayed?.Clutch ?? 0, graphBrushes.Clutch);
+            gaugeX += 40;
+        }
+        if (_graph.ShowBrake)
+        {
+            DrawGauge(target, gaugeX, top, panelHeight, displayed?.Brake ?? 0, graphBrushes.Brake);
+            gaugeX += 40;
+        }
+        if (_graph.ShowThrottle)
+            DrawGauge(target, gaugeX, top, panelHeight, displayed?.Throttle ?? 0, graphBrushes.Throttle);
         DrawGear(target, gearX, top, panelHeight, displayed);
         DrawWheel(target, wheelX, top, panelHeight, displayed);
 
@@ -159,12 +194,12 @@ internal sealed class Direct2DRenderer : IDisposable
             PixelSize = new SizeI(width, height)
         };
         _target = _factory.CreateHwndRenderTarget(new RenderTargetProperties(), hwndProperties);
-        _target.SetDpi(96, 96);
-        _graphBrushes = new GraphBrushes(_target);
-        _wheelBrushes = new SteeringBrushes(_target);
-        _text = _target.CreateSolidColorBrush(Colors.FromRgb(246, 246, 248));
-        _panel = _target.CreateSolidColorBrush(Colors.FromRgb(15, 16, 19));
-        _border = _target.CreateSolidColorBrush(Colors.FromRgb(58, 60, 66));
+        _target.SetDpi(96 * _zoomScale, 96 * _zoomScale);
+        _graphBrushes = new GraphBrushes(_target, _palette);
+        _wheelBrushes = new SteeringBrushes(_target, _palette);
+        _text = _target.CreateSolidColorBrush(_palette.PrimaryText);
+        _panel = _target.CreateSolidColorBrush(_palette.PanelBackground);
+        _border = _target.CreateSolidColorBrush(_palette.ControlBorder);
     }
 
     private void ReleaseTarget()

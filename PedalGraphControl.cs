@@ -9,9 +9,13 @@ namespace ACEvo_Driver_Input;
 // The graph logic mirrors the original WPF control, but draws to a native Direct2D target.
 internal sealed class PedalGraphControl
 {
-    private const double HistorySeconds = 10;
+    private const double MaxHistorySeconds = 30;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly List<GraphSample> _samples = [];
+    public bool ShowThrottle { get; set; } = true;
+    public bool ShowBrake { get; set; } = true;
+    public bool ShowClutch { get; set; } = true;
+    public int TimeSpanSeconds { get; set; } = 10;
 
     public void AddSample(float throttle, float brake, float clutch, bool tcActive, bool absActive)
     {
@@ -37,21 +41,24 @@ internal sealed class PedalGraphControl
             target.DrawLine(new Vector2(x, lineY), new Vector2(x + width, lineY), brushes.Grid, 1);
         }
 
-        for (int i = 1; i < 5; i++)
+        for (int second = 1; second < TimeSpanSeconds; second++)
         {
-            float lineX = x + width * i / 5;
+            float lineX = x + width * (1 - second / (float)TimeSpanSeconds);
             target.DrawLine(new Vector2(lineX, y), new Vector2(lineX, y + height), brushes.Grid, 1);
         }
 
         double now = _clock.Elapsed.TotalSeconds;
         Trim(now);
         target.PushAxisAlignedClip(bounds, AntialiasMode.PerPrimitive);
-        DrawSeries(target, now, x, y, width, height, static s => s.Throttle,
-            static s => s.TcActive, brushes.Throttle, brushes.TcThrottle);
-        DrawSeries(target, now, x, y, width, height, static s => s.Brake,
-            static s => s.AbsActive, brushes.Brake, brushes.AbsBrake);
-        DrawSeries(target, now, x, y, width, height, static s => s.Clutch,
-            static _ => false, brushes.Clutch, brushes.Clutch);
+        if (ShowThrottle)
+            DrawSeries(target, now, x, y, width, height, static s => s.Throttle,
+                static s => s.TcActive, brushes.Throttle, brushes.TcThrottle);
+        if (ShowBrake)
+            DrawSeries(target, now, x, y, width, height, static s => s.Brake,
+                static s => s.AbsActive, brushes.Brake, brushes.AbsBrake);
+        if (ShowClutch)
+            DrawSeries(target, now, x, y, width, height, static s => s.Clutch,
+                static _ => false, brushes.Clutch, brushes.Clutch);
         target.PopAxisAlignedClip();
         target.DrawRoundedRectangle(roundedBounds, brushes.Border, 1);
     }
@@ -72,12 +79,12 @@ internal sealed class PedalGraphControl
         foreach (GraphSample sample in _samples)
         {
             double age = now - sample.Time;
-            if (age > HistorySeconds)
+            if (age > TimeSpanSeconds)
             {
                 continue;
             }
 
-            float pointX = x + width * (float)(1 - age / HistorySeconds);
+            float pointX = x + width * (float)(1 - age / TimeSpanSeconds);
             float pointY = y + height * (1 - Math.Clamp(value(sample), 0f, 1f));
             Vector2 point = new(pointX, pointY);
             if (previous is Vector2 start)
@@ -92,7 +99,7 @@ internal sealed class PedalGraphControl
     private void Trim(double now)
     {
         int removeCount = 0;
-        double oldest = now - HistorySeconds - 0.25;
+        double oldest = now - MaxHistorySeconds - 0.25;
         while (removeCount < _samples.Count && _samples[removeCount].Time < oldest)
         {
             removeCount++;
@@ -124,11 +131,11 @@ internal sealed class GraphBrushes : IDisposable
     public ID2D1SolidColorBrush AbsBrake { get; }
     public ID2D1SolidColorBrush Clutch { get; }
 
-    public GraphBrushes(ID2D1HwndRenderTarget target)
+    public GraphBrushes(ID2D1HwndRenderTarget target, ThemePalette palette)
     {
-        Background = target.CreateSolidColorBrush(Colors.FromRgb(20, 20, 23));
-        Grid = target.CreateSolidColorBrush(Colors.FromRgb(52, 52, 58));
-        Border = target.CreateSolidColorBrush(Colors.FromRgb(72, 72, 78));
+        Background = target.CreateSolidColorBrush(palette.GraphBackground);
+        Grid = target.CreateSolidColorBrush(palette.GraphGrid);
+        Border = target.CreateSolidColorBrush(palette.ControlBorder);
         Throttle = target.CreateSolidColorBrush(Colors.FromRgb(46, 208, 110));
         TcThrottle = target.CreateSolidColorBrush(Colors.FromRgb(168, 85, 247));
         Brake = target.CreateSolidColorBrush(Colors.FromRgb(255, 75, 85));

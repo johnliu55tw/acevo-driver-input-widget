@@ -37,11 +37,29 @@ internal sealed class InputWindow : IDisposable
     private const uint WmNcRightButtonUp = 0x00A5;
     private const nint HitCaption = 2;
     private const nuint TelemetryTimerId = 1;
+    private const uint MfPopup = 0x0010;
+    private const uint MfChecked = 0x0008;
+    private const uint MfSeparator = 0x0800;
+    private const uint TpmReturnCmdRightButton = 0x0102;
+    private const uint SwpNoMoveNoZOrderNoActivate = 0x0016;
+    private const uint ExitCommand = 1;
+    private const uint ThrottleCommand = 10;
+    private const uint BrakeCommand = 11;
+    private const uint ClutchCommand = 12;
+    private const uint ZoomInCommand = 20;
+    private const uint ZoomOutCommand = 21;
+    private const uint ZoomBaseCommand = 100;
+    private const uint DarkThemeCommand = 200;
+    private const uint LightThemeCommand = 201;
+    private const uint GraphSpanBaseCommand = 300;
+    private const uint ChartWidthBaseCommand = 400;
+    private const uint UpdateRateBaseCommand = 500;
 
     private static readonly WndProcDelegate WindowProcedureDelegate = WindowProcedure;
     private static InputWindow? s_window;
 
     private readonly ACEvoTelemetryReader _reader = new();
+    private readonly WidgetSettings _settings = WidgetSettings.Load();
     private Direct2DRenderer? _renderer;
     private TelemetrySample? _sample;
     private DateTime _nextConnectAttempt;
@@ -66,21 +84,17 @@ internal sealed class InputWindow : IDisposable
         }
 
         _hwnd = CreateWindowExW(WsExTopmost | WsExToolWindow, ClassName, "AC EVO Driver Inputs — Direct2D PoC",
-            WsPopup, 100, 100, WindowWidth, WindowHeight,
+            WsPopup, 100, 100, ScaledWidth, ScaledHeight,
             0, 0, module, 0);
         if (_hwnd == 0)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to create the Win32 window.");
         }
 
-        nint cornerRegion = CreateRoundRectRgn(0, 0, WindowWidth, WindowHeight, 18, 18);
-        if (cornerRegion != 0 && SetWindowRgn(_hwnd, cornerRegion, true) == 0)
-        {
-            DeleteObject(cornerRegion);
-        }
+        UpdateCornerRegion();
 
-        _renderer = new Direct2DRenderer(_hwnd);
-        if (SetTimer(_hwnd, TelemetryTimerId, 33, 0) == 0)
+        _renderer = new Direct2DRenderer(_hwnd, _settings);
+        if (SetTimer(_hwnd, TelemetryTimerId, _settings.UpdateIntervalMilliseconds, 0) == 0)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to start the telemetry timer.");
         }
@@ -130,7 +144,7 @@ internal sealed class InputWindow : IDisposable
             case WmNcHitTest:
                 return HitCaption; // Drag the borderless overlay from any point.
             case WmNcRightButtonUp:
-                ShowExitMenu(hwnd);
+                window.ShowSettingsMenu(hwnd);
                 return 0;
             case WmClose:
                 DestroyWindow(hwnd);
@@ -144,7 +158,11 @@ internal sealed class InputWindow : IDisposable
         }
     }
 
-    private static void ShowExitMenu(nint hwnd)
+    private int LogicalWindowWidth => WindowWidth + _settings.ChartWidthPixels - WidgetSettings.MediumChartWidthPixels;
+    private int ScaledWidth => (int)Math.Round(LogicalWindowWidth * _settings.ZoomPercent / 100.0);
+    private int ScaledHeight => (int)Math.Round(WindowHeight * _settings.ZoomPercent / 100.0);
+
+    private void ShowSettingsMenu(nint hwnd)
     {
         nint menu = CreatePopupMenu();
         if (menu == 0)
@@ -154,18 +172,141 @@ internal sealed class InputWindow : IDisposable
 
         try
         {
-            AppendMenuW(menu, 0, 1, "Exit");
+            nint pedals = CreatePopupMenu();
+            nint zoom = CreatePopupMenu();
+            nint theme = CreatePopupMenu();
+            nint graphSpan = CreatePopupMenu();
+            nint chartWidth = CreatePopupMenu();
+            nint updateRate = CreatePopupMenu();
+            if (pedals == 0 || zoom == 0 || theme == 0 || graphSpan == 0 || chartWidth == 0 || updateRate == 0)
+            {
+                if (pedals != 0) DestroyMenu(pedals);
+                if (zoom != 0) DestroyMenu(zoom);
+                if (theme != 0) DestroyMenu(theme);
+                if (graphSpan != 0) DestroyMenu(graphSpan);
+                if (chartWidth != 0) DestroyMenu(chartWidth);
+                if (updateRate != 0) DestroyMenu(updateRate);
+                return;
+            }
+
+            AppendMenuW(pedals, _settings.ShowThrottle ? MfChecked : 0, ThrottleCommand, "Throttle");
+            AppendMenuW(pedals, _settings.ShowBrake ? MfChecked : 0, BrakeCommand, "Brake");
+            AppendMenuW(pedals, _settings.ShowClutch ? MfChecked : 0, ClutchCommand, "Clutch");
+            AppendMenuW(menu, MfPopup, (nuint)pedals, "Pedal inputs");
+
+            AppendMenuW(zoom, 0, ZoomOutCommand, "Zoom out");
+            AppendMenuW(zoom, 0, ZoomInCommand, "Zoom in");
+            AppendMenuW(zoom, MfSeparator, 0, string.Empty);
+            for (int i = 0; i < WidgetSettings.AvailableZoomLevels.Count; i++)
+            {
+                int percent = WidgetSettings.AvailableZoomLevels[i];
+                AppendMenuW(zoom, _settings.ZoomPercent == percent ? MfChecked : 0,
+                    ZoomBaseCommand + (uint)i, $"{percent}%");
+            }
+            AppendMenuW(menu, MfPopup, (nuint)zoom, "Zoom");
+
+            AppendMenuW(theme, _settings.IsLightTheme ? 0 : MfChecked, DarkThemeCommand, "Dark");
+            AppendMenuW(theme, _settings.IsLightTheme ? MfChecked : 0, LightThemeCommand, "Light");
+            AppendMenuW(menu, MfPopup, (nuint)theme, "Theme");
+
+            for (int i = 0; i < WidgetSettings.AvailableGraphSpans.Count; i++)
+            {
+                int seconds = WidgetSettings.AvailableGraphSpans[i];
+                AppendMenuW(graphSpan, _settings.GraphTimeSpanSeconds == seconds ? MfChecked : 0,
+                    GraphSpanBaseCommand + (uint)i, $"{seconds} seconds");
+            }
+            AppendMenuW(menu, MfPopup, (nuint)graphSpan, "Graph time span");
+            for (int i = 0; i < WidgetSettings.AvailableChartWidths.Count; i++)
+            {
+                string width = WidgetSettings.AvailableChartWidths[i];
+                AppendMenuW(chartWidth, _settings.ChartWidth == width ? MfChecked : 0,
+                    ChartWidthBaseCommand + (uint)i, width);
+            }
+            AppendMenuW(menu, MfPopup, (nuint)chartWidth, "Chart width");
+            for (int i = 0; i < WidgetSettings.AvailableUpdateRates.Count; i++)
+            {
+                int rate = WidgetSettings.AvailableUpdateRates[i];
+                AppendMenuW(updateRate, _settings.UpdateRateHz == rate ? MfChecked : 0,
+                    UpdateRateBaseCommand + (uint)i, $"{rate} Hz");
+            }
+            AppendMenuW(menu, MfPopup, (nuint)updateRate, "Update rate");
+            AppendMenuW(menu, MfSeparator, 0, string.Empty);
+            AppendMenuW(menu, 0, ExitCommand, "Exit");
             GetCursorPos(out WindowPoint point);
             SetForegroundWindow(hwnd);
-            if (TrackPopupMenuEx(menu, 0x0102, point.X, point.Y, hwnd, 0) == 1)
-            {
-                DestroyWindow(hwnd);
-            }
+            HandleMenuCommand(TrackPopupMenuEx(menu, TpmReturnCmdRightButton, point.X, point.Y, hwnd, 0));
         }
         finally
         {
             DestroyMenu(menu);
         }
+    }
+
+    private void HandleMenuCommand(uint command)
+    {
+        if (command == ExitCommand)
+        {
+            DestroyWindow(_hwnd);
+            return;
+        }
+
+        int previousWidth = ScaledWidth;
+        int previousHeight = ScaledHeight;
+        int previousUpdateRate = _settings.UpdateRateHz;
+        switch (command)
+        {
+            case ThrottleCommand: _settings.ShowThrottle = !_settings.ShowThrottle; break;
+            case BrakeCommand: _settings.ShowBrake = !_settings.ShowBrake; break;
+            case ClutchCommand: _settings.ShowClutch = !_settings.ShowClutch; break;
+            case DarkThemeCommand: _settings.Theme = "Dark"; break;
+            case LightThemeCommand: _settings.Theme = "Light"; break;
+            case ZoomInCommand:
+            case ZoomOutCommand:
+                int current = 0;
+                while (WidgetSettings.AvailableZoomLevels[current] != _settings.ZoomPercent)
+                    current++;
+                int next = Math.Clamp(current + (command == ZoomInCommand ? 1 : -1),
+                    0, WidgetSettings.AvailableZoomLevels.Count - 1);
+                _settings.ZoomPercent = WidgetSettings.AvailableZoomLevels[next];
+                break;
+            default:
+                if (command >= ZoomBaseCommand && command < ZoomBaseCommand + (uint)WidgetSettings.AvailableZoomLevels.Count)
+                    _settings.ZoomPercent = WidgetSettings.AvailableZoomLevels[(int)(command - ZoomBaseCommand)];
+                else if (command >= GraphSpanBaseCommand && command < GraphSpanBaseCommand + (uint)WidgetSettings.AvailableGraphSpans.Count)
+                    _settings.GraphTimeSpanSeconds = WidgetSettings.AvailableGraphSpans[(int)(command - GraphSpanBaseCommand)];
+                else if (command >= ChartWidthBaseCommand && command < ChartWidthBaseCommand + (uint)WidgetSettings.AvailableChartWidths.Count)
+                    _settings.ChartWidth = WidgetSettings.AvailableChartWidths[(int)(command - ChartWidthBaseCommand)];
+                else if (command >= UpdateRateBaseCommand && command < UpdateRateBaseCommand + (uint)WidgetSettings.AvailableUpdateRates.Count)
+                    _settings.UpdateRateHz = WidgetSettings.AvailableUpdateRates[(int)(command - UpdateRateBaseCommand)];
+                else
+                    return;
+                break;
+        }
+
+        if (previousUpdateRate != _settings.UpdateRateHz &&
+            SetTimer(_hwnd, TelemetryTimerId, _settings.UpdateIntervalMilliseconds, 0) == 0)
+        {
+            _settings.UpdateRateHz = previousUpdateRate;
+            return;
+        }
+
+        bool resize = previousWidth != ScaledWidth || previousHeight != ScaledHeight;
+        _renderer?.ApplySettings(_settings);
+        if (resize)
+        {
+            SetWindowPos(_hwnd, 0, 0, 0, ScaledWidth, ScaledHeight, SwpNoMoveNoZOrderNoActivate);
+            UpdateCornerRegion();
+        }
+        InvalidateRect(_hwnd, 0, false);
+        _settings.Save();
+    }
+
+    private void UpdateCornerRegion()
+    {
+        int diameter = (int)Math.Round(18 * _settings.ZoomPercent / 100.0);
+        nint region = CreateRoundRectRgn(0, 0, ScaledWidth, ScaledHeight, diameter, diameter);
+        if (region != 0 && SetWindowRgn(_hwnd, region, true) == 0)
+            DeleteObject(region);
     }
 
     private void PollTelemetry()
@@ -320,4 +461,6 @@ internal sealed class InputWindow : IDisposable
     private static extern uint TrackPopupMenuEx(nint menu, uint flags, int x, int y, nint hwnd, nint parameters);
     [DllImport("user32.dll")]
     private static extern bool DestroyMenu(nint menu);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(nint hwnd, nint insertAfter, int x, int y, int width, int height, uint flags);
 }

@@ -49,13 +49,13 @@ internal sealed class SteeringBrushes : IDisposable
     public ID2D1SolidColorBrush Marker { get; }
     public ID2D1SolidColorBrush Hub { get; }
 
-    public SteeringBrushes(ID2D1HwndRenderTarget target)
+    public SteeringBrushes(ID2D1HwndRenderTarget target, ThemePalette palette)
     {
-        Background = target.CreateSolidColorBrush(Colors.FromRgb(24, 24, 28));
-        Rim = target.CreateSolidColorBrush(Colors.FromRgb(225, 225, 228));
-        Spoke = target.CreateSolidColorBrush(Colors.FromRgb(182, 182, 188));
+        Background = target.CreateSolidColorBrush(palette.WheelBackground);
+        Rim = target.CreateSolidColorBrush(palette.WheelRim);
+        Spoke = target.CreateSolidColorBrush(palette.WheelSpoke);
         Marker = target.CreateSolidColorBrush(Colors.FromRgb(46, 208, 110));
-        Hub = target.CreateSolidColorBrush(Colors.FromRgb(45, 45, 50));
+        Hub = target.CreateSolidColorBrush(palette.WheelHub);
     }
 
     public void Dispose()
