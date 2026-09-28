@@ -5,13 +5,13 @@ A small, always-on-top native Win32 overlay for **Assetto Corsa EVO** showing dr
 - Steering-wheel rotation and angle
 - Current gear
 - Vertical throttle, brake, and clutch gauges
-- A scrolling graph for the same three pedal inputs, with the throttle trace turning **purple** while TC is active and the brake trace turning **yellow** while ABS is active
+- A scrolling pedal graph, with the throttle trace turning **purple** while TC is active and the brake trace turning **yellow** while ABS is active
 
 Right-click the overlay to configure:
 
 - Which pedal inputs are shown
-- Graph history from 5–30 seconds
-- Small, Medium, or Large graph width
+- Graph time span from 5–30 seconds
+- Graph width: Small, Medium, or Large
 - Complete overlay scale from 50–250%
 - Dark or light theme
 - Telemetry polling and redraw at 30 or 60 Hz
@@ -23,8 +23,6 @@ The graph remains visible outside a driving session, with neutral gauges when th
 1. Open the [latest GitHub Release](https://github.com/johnliu55tw/acevo-driver-input-widget/releases/latest) and download the Windows x64 **`*-self-contained.exe`** file. It is a compressed standalone build and needs no separate .NET installation.
 2. Save the executable wherever you want to keep the app and run it. There is no installer. To update, download the new version from Releases and replace the old executable.
 3. Start Assetto Corsa EVO and enter a driving session. Run the game and overlay in the same Windows session and at compatible privilege levels (normally, neither as Administrator).
-
-Use **Borderless Fullscreen** or **Windowed** display mode in AC EVO. Windows cannot show a normal desktop overlay above a true exclusive-fullscreen DirectX surface.
 
 Version history and release notes are on the [Releases page](https://github.com/johnliu55tw/acevo-driver-input-widget/releases).
 

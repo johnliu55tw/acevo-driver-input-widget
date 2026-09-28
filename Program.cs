@@ -25,8 +25,11 @@ internal sealed class InputWindow : IDisposable
     private const uint WsPopup = 0x80000000;
     private const uint WsExTopmost = 0x00000008;
     private const uint WsExToolWindow = 0x00000080;
+    private const uint WsExNoActivate = 0x08000000;
+    private const int SwShowNoActivate = 4;
     private const int WindowWidth = 960;
     private const int WindowHeight = 210;
+    private const uint WmActivate = 0x0006;
     private const uint WmSize = 0x0005;
     private const uint WmExitSizeMove = 0x0232;
     private const uint WmClose = 0x0010;
@@ -34,15 +37,21 @@ internal sealed class InputWindow : IDisposable
     private const uint WmPaint = 0x000F;
     private const uint WmEraseBkgnd = 0x0014;
     private const uint WmTimer = 0x0113;
+    private const uint WmMouseActivate = 0x0021;
     private const uint WmNcHitTest = 0x0084;
     private const uint WmNcRightButtonUp = 0x00A5;
     private const nint HitCaption = 2;
+    private const nint MaNoActivate = 3;
     private const nuint TelemetryTimerId = 1;
     private const uint MfPopup = 0x0010;
     private const uint MfChecked = 0x0008;
     private const uint MfSeparator = 0x0800;
     private const uint TpmReturnCmdRightButton = 0x0102;
     private const uint SwpNoMoveNoZOrderNoActivate = 0x0016;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoOwnerZOrder = 0x0200;
     private const uint ExitCommand = 1;
     private const uint ThrottleCommand = 10;
     private const uint BrakeCommand = 11;
@@ -57,6 +66,7 @@ internal sealed class InputWindow : IDisposable
     private const uint UpdateRateBaseCommand = 500;
 
     private static readonly WndProcDelegate WindowProcedureDelegate = WindowProcedure;
+    private static readonly nint HwndTopmost = new(-1);
     private static InputWindow? s_window;
 
     private readonly ACEvoTelemetryReader _reader = new();
@@ -64,6 +74,7 @@ internal sealed class InputWindow : IDisposable
     private Direct2DRenderer? _renderer;
     private TelemetrySample? _sample;
     private DateTime _nextConnectAttempt;
+    private DateTime _nextTopmostRefresh;
     private nint _hwnd;
 
     public int Run()
@@ -85,7 +96,8 @@ internal sealed class InputWindow : IDisposable
         }
 
         WindowPoint position = GetStartupPosition();
-        _hwnd = CreateWindowExW(WsExTopmost | WsExToolWindow, ClassName, "AC EVO Driver Inputs Widget",
+        _hwnd = CreateWindowExW(WsExTopmost | WsExToolWindow | WsExNoActivate,
+            ClassName, "AC EVO Driver Inputs Widget",
             WsPopup, position.X, position.Y, ScaledWidth, ScaledHeight,
             0, 0, module, 0);
         if (_hwnd == 0)
@@ -101,7 +113,8 @@ internal sealed class InputWindow : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to start the telemetry timer.");
         }
 
-        ShowWindow(_hwnd, 5);
+        ShowWindow(_hwnd, SwShowNoActivate);
+        EnsureTopmost();
         UpdateWindow(_hwnd);
         while (true)
         {
@@ -131,9 +144,17 @@ internal sealed class InputWindow : IDisposable
         switch (message)
         {
             case WmTimer when wParam == TelemetryTimerId:
+                if (DateTime.UtcNow >= window._nextTopmostRefresh)
+                {
+                    window.EnsureTopmost();
+                    window._nextTopmostRefresh = DateTime.UtcNow.AddSeconds(1);
+                }
                 window.PollTelemetry();
                 InvalidateRect(hwnd, 0, false);
                 return 0;
+            case WmActivate:
+                window.EnsureTopmost();
+                return DefWindowProcW(hwnd, message, wParam, lParam);
             case WmSize:
                 window.Resize();
                 return 0;
@@ -146,6 +167,8 @@ internal sealed class InputWindow : IDisposable
                 return 0;
             case WmEraseBkgnd:
                 return 1;
+            case WmMouseActivate:
+                return MaNoActivate; // Mouse interaction should not take focus from the game.
             case WmNcHitTest:
                 return HitCaption; // Drag the borderless overlay from any point.
             case WmNcRightButtonUp:
@@ -167,6 +190,15 @@ internal sealed class InputWindow : IDisposable
     private int LogicalWindowWidth => WindowWidth + _settings.ChartWidthPixels - WidgetSettings.MediumChartWidthPixels;
     private int ScaledWidth => (int)Math.Round(LogicalWindowWidth * _settings.ZoomPercent / 100.0);
     private int ScaledHeight => (int)Math.Round(WindowHeight * _settings.ZoomPercent / 100.0);
+
+    private void EnsureTopmost()
+    {
+        if (_hwnd != 0 && IsWindow(_hwnd))
+        {
+            SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoActivate | SwpNoOwnerZOrder);
+        }
+    }
 
     private WindowPoint GetStartupPosition()
     {
@@ -252,14 +284,14 @@ internal sealed class InputWindow : IDisposable
                 AppendMenuW(graphSpan, _settings.GraphTimeSpanSeconds == seconds ? MfChecked : 0,
                     GraphSpanBaseCommand + (uint)i, $"{seconds} seconds");
             }
-            AppendMenuW(menu, MfPopup, (nuint)graphSpan, "Chart time span");
+            AppendMenuW(menu, MfPopup, (nuint)graphSpan, "Graph time span");
             for (int i = 0; i < WidgetSettings.AvailableChartWidths.Count; i++)
             {
                 string width = WidgetSettings.AvailableChartWidths[i];
                 AppendMenuW(chartWidth, _settings.ChartWidth == width ? MfChecked : 0,
                     ChartWidthBaseCommand + (uint)i, width);
             }
-            AppendMenuW(menu, MfPopup, (nuint)chartWidth, "Chart width");
+            AppendMenuW(menu, MfPopup, (nuint)chartWidth, "Graph width");
             for (int i = 0; i < WidgetSettings.AvailableUpdateRates.Count; i++)
             {
                 int rate = WidgetSettings.AvailableUpdateRates[i];
