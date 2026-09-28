@@ -17,6 +17,10 @@ Right-click the overlay to configure:
 - Dark or light theme
 - Telemetry polling and redraw at 30 or 60 Hz
 
+![Overlay right-click settings menu](./imgs/right-click-menu.png)
+
+> **NOTE:** The overlay regularly brings itself above other windows, including the game, and may cover its own settings menu. If that happens, right-click near the overlay's bottom-left corner to keep the menu visible.
+
 The graph remains visible outside a driving session, with neutral gauges when the game is absent. Drag anywhere to move the window. Preferences and window position are saved automatically in `%LOCALAPPDATA%\ACEvoDriverInput\settings.json`.
 
 ## Installation
