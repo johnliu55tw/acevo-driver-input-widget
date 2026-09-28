@@ -22,6 +22,8 @@ internal sealed class WidgetSettings
     public int UpdateRateHz { get; set; } = 30;
     public string ChartWidth { get; set; } = "Medium";
     public string Theme { get; set; } = "Dark";
+    public int? WindowX { get; set; }
+    public int? WindowY { get; set; }
 
     public static IReadOnlyList<int> AvailableZoomLevels => ZoomLevels;
     public static IReadOnlyList<int> AvailableGraphSpans => GraphSpans;

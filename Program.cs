@@ -28,6 +28,7 @@ internal sealed class InputWindow : IDisposable
     private const int WindowWidth = 960;
     private const int WindowHeight = 210;
     private const uint WmSize = 0x0005;
+    private const uint WmExitSizeMove = 0x0232;
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
     private const uint WmPaint = 0x000F;
@@ -83,8 +84,9 @@ internal sealed class InputWindow : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to register the window class.");
         }
 
+        WindowPoint position = GetStartupPosition();
         _hwnd = CreateWindowExW(WsExTopmost | WsExToolWindow, ClassName, "AC EVO Driver Inputs — Direct2D PoC",
-            WsPopup, 100, 100, ScaledWidth, ScaledHeight,
+            WsPopup, position.X, position.Y, ScaledWidth, ScaledHeight,
             0, 0, module, 0);
         if (_hwnd == 0)
         {
@@ -135,6 +137,9 @@ internal sealed class InputWindow : IDisposable
             case WmSize:
                 window.Resize();
                 return 0;
+            case WmExitSizeMove:
+                window.SaveWindowPosition(hwnd);
+                return 0;
             case WmPaint:
                 window.Paint();
                 ValidateRect(hwnd, 0);
@@ -150,6 +155,7 @@ internal sealed class InputWindow : IDisposable
                 DestroyWindow(hwnd);
                 return 0;
             case WmDestroy:
+                window.SaveWindowPosition(hwnd);
                 KillTimer(hwnd, TelemetryTimerId);
                 PostQuitMessage(0);
                 return 0;
@@ -161,6 +167,37 @@ internal sealed class InputWindow : IDisposable
     private int LogicalWindowWidth => WindowWidth + _settings.ChartWidthPixels - WidgetSettings.MediumChartWidthPixels;
     private int ScaledWidth => (int)Math.Round(LogicalWindowWidth * _settings.ZoomPercent / 100.0);
     private int ScaledHeight => (int)Math.Round(WindowHeight * _settings.ZoomPercent / 100.0);
+
+    private WindowPoint GetStartupPosition()
+    {
+        const int defaultPosition = 100;
+        if (_settings.WindowX is not int x || _settings.WindowY is not int y ||
+            (long)x + ScaledWidth > int.MaxValue || (long)y + ScaledHeight > int.MaxValue)
+        {
+            return new WindowPoint { X = defaultPosition, Y = defaultPosition };
+        }
+
+        WindowRect savedBounds = new()
+        {
+            Left = x,
+            Top = y,
+            Right = x + ScaledWidth,
+            Bottom = y + ScaledHeight
+        };
+        return MonitorFromRect(ref savedBounds, 0) != 0
+            ? new WindowPoint { X = x, Y = y }
+            : new WindowPoint { X = defaultPosition, Y = defaultPosition };
+    }
+
+    private void SaveWindowPosition(nint hwnd)
+    {
+        if (GetWindowRect(hwnd, out WindowRect bounds))
+        {
+            _settings.WindowX = bounds.Left;
+            _settings.WindowY = bounds.Top;
+            _settings.Save();
+        }
+    }
 
     private void ShowSettingsMenu(nint hwnd)
     {
@@ -429,6 +466,10 @@ internal sealed class InputWindow : IDisposable
     private static extern bool KillTimer(nint hwnd, nuint timerId);
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(nint hwnd, out WindowRect rect);
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(nint hwnd, out WindowRect rect);
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromRect(ref WindowRect rect, uint flags);
     [DllImport("user32.dll")]
     private static extern bool InvalidateRect(nint hwnd, nint rect, bool erase);
     [DllImport("user32.dll")]

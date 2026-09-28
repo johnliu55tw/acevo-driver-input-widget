@@ -12,4 +12,6 @@ Requires Windows and the .NET 10 SDK:
 dotnet run --project .\ACEvo-Driver-Input.csproj
 ```
 
+The window's position is saved in the settings file when it is moved or closed and restored on the next launch if its display is available.
+
 The window opens even without the game and shows an empty graph and neutral gauges. When AC EVO's shared-memory mappings are available, values update automatically. Drag anywhere to move the window. Right-click to choose visible pedals, zoom from 50% to 250%, Dark or Light theme, a 5, 10, 15, 20, or 30-second graph span, Small, Medium, or Large chart width, and a 30 or 60 Hz update rate. The update rate controls both telemetry polling and redraws. The graph's vertical grid marks each second at every width and time span. **Zoom in** and **Zoom out** step through the listed levels. Choose **Exit** to close it. Preferences are saved in `%LOCALAPPDATA%\ACEvoDriverInput\settings.json`.
