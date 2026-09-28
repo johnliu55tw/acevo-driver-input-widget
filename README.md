@@ -22,7 +22,7 @@ The graph remains visible outside a driving session, with neutral gauges when th
 
 1. Open the [latest GitHub Release](https://github.com/johnliu55tw/acevo-driver-input-widget/releases/latest) and download the Windows x64 **`*-self-contained.exe`** file. It is a compressed standalone build and needs no separate .NET installation.
 2. Save the executable wherever you want to keep the app and run it. There is no installer. To update, download the new version from Releases and replace the old executable.
-3. Start Assetto Corsa EVO and enter a driving session. Run the game and overlay in the same Windows session and at compatible privilege levels (normally, neither as Administrator).
+3. Start Assetto Corsa EVO and enter a driving session. Telemetry will not work until a driving session has started.
 
 Version history and release notes are on the [Releases page](https://github.com/johnliu55tw/acevo-driver-input-widget/releases).
 
@@ -33,10 +33,6 @@ Requirements: Windows and the .NET 10 SDK.
 ```powershell
 dotnet run --project .\ACEvo-Driver-Input.csproj
 ```
-
-Start Assetto Corsa EVO and enter a driving session. There is no in-game telemetry option to enable. The game and overlay must run in the same Windows session and at compatible privilege levels (normally, run both without Administrator elevation).
-
-The overlay opens even without the game. During a driving session, the graph and gauges update automatically from AC EVO's shared memory. Right-click to change settings or choose **Exit**. **Zoom in** and **Zoom out** step through the available scale levels.
 
 ## Releasing
 
@@ -83,7 +79,4 @@ The reader checks each block's packet id before and after its own snapshot. If e
 ## Research sources
 
 - [Kunos/505 Games shared-memory documentation on Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=3707421508) — canonical mapping names and data layout.
-- [Assetto Corsa EVO 0.6 announcement](https://assettocorsa.gg/assetto-corsa-evo-early-access-06-now-available/) — confirms the updated shared-memory library and official telemetry support.
 - [Community field-by-field transcription and validation](https://github.com/albertowd/live-telemetry-evo/blob/develop/docs/SHARED_MEMORY.md) by [albertowd](https://github.com/albertowd) — the source for the detailed telemetry offsets, units, packing, and concurrency notes used here, cross-checked against the official guide.
-
-AC EVO is still evolving, so a future shared-memory version may require updating the documented offsets.
