@@ -79,7 +79,7 @@ jobs:
           if ($files[0].VersionInfo.FileVersion -ne "${env:APP_VERSION}.0") {
             throw "Unexpected file version in ${folder}: $($files[0].VersionInfo.FileVersion)"
           }
-          $name = "ACEvo-Driver-Input-$($env:RELEASE_TAG)-win-x64-self-contained.exe"
+          $name = "ACEvo-Driver-Input-$($env:RELEASE_TAG)-win-x64.exe"
           Copy-Item -LiteralPath $files[0].FullName -Destination (Join-Path .\artifacts\release $name) -Force
           Write-Host "${name}: $($files[0].Length) bytes"
 

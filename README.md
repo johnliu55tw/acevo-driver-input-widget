@@ -1,5 +1,6 @@
 # Assetto Corsa EVO Driver Inputs Widget
 
+![Screenshot](./imgs/interface.png)
 A small, always-on-top native Win32 overlay for **Assetto Corsa EVO** showing driver inputs. It uses Direct2D and DirectWrite to display:
 
 - Steering-wheel rotation and angle
@@ -20,7 +21,7 @@ The graph remains visible outside a driving session, with neutral gauges when th
 
 ## Installation
 
-1. Open the [latest GitHub Release](https://github.com/johnliu55tw/acevo-driver-input-widget/releases/latest) and download the Windows x64 **`*-self-contained.exe`** file. It is a compressed standalone build and needs no separate .NET installation.
+1. Open the [latest GitHub Release](https://github.com/johnliu55tw/acevo-driver-input-widget/releases/latest) and download the Windows x64 **`*-win-x64.exe`** file. It is a compressed standalone build and needs no separate .NET installation.
 2. Save the executable wherever you want to keep the app and run it. There is no installer. To update, download the new version from Releases and replace the old executable.
 3. Start Assetto Corsa EVO and enter a driving session. Telemetry will not work until a driving session has started.
 
