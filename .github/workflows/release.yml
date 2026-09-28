@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to retry (for example, v0.0.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2025
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Validate release tag and commit
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw "Release tag must have the form vX.Y.Z: ${tag}"
+          }
+
+          $tagCommit = git rev-parse "${tag}^{commit}"
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -ne (git rev-parse HEAD)) {
+            throw "Checked-out commit does not match tag ${tag}."
+          }
+
+          git fetch origin main --no-tags
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch main.' }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'The release tag must point to a commit on main.' }
+
+          "APP_VERSION=$(${tag}.Substring(1))" >> $env:GITHUB_ENV
+          "RELEASE_TAG=${tag}" >> $env:GITHUB_ENV
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate project
+        shell: pwsh
+        run: dotnet build .\ACEvo-Driver-Input.csproj -c Release -p:Version=$env:APP_VERSION
+
+      - name: Publish compressed self-contained EXE
+        shell: pwsh
+        run: |
+          dotnet publish .\ACEvo-Driver-Input.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:DebugType=None `
+            -p:Version=$env:APP_VERSION -o .\artifacts\release\self-contained
+
+      - name: Check and name release file
+        shell: pwsh
+        run: |
+          $folder = '.\artifacts\release\self-contained'
+          $files = @(Get-ChildItem -LiteralPath $folder -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'ACEvo-Driver-Input.exe') {
+            throw "Expected exactly one EXE in ${folder}; found $($files.Count) file(s)."
+          }
+          if ($files[0].VersionInfo.FileVersion -ne "${env:APP_VERSION}.0") {
+            throw "Unexpected file version in ${folder}: $($files[0].VersionInfo.FileVersion)"
+          }
+          $name = "ACEvo-Driver-Input-$($env:RELEASE_TAG)-win-x64-self-contained.exe"
+          Copy-Item -LiteralPath $files[0].FullName -Destination (Join-Path .\artifacts\release $name) -Force
+          Write-Host "${name}: $($files[0].Length) bytes"
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:RELEASE_TAG .\artifacts\release\*.exe `
+            --verify-tag --generate-notes --title $env:RELEASE_TAG

@@ -85,7 +85,7 @@ internal sealed class InputWindow : IDisposable
         }
 
         WindowPoint position = GetStartupPosition();
-        _hwnd = CreateWindowExW(WsExTopmost | WsExToolWindow, ClassName, "AC EVO Driver Inputs — Direct2D PoC",
+        _hwnd = CreateWindowExW(WsExTopmost | WsExToolWindow, ClassName, "AC EVO Driver Inputs Widget",
             WsPopup, position.X, position.Y, ScaledWidth, ScaledHeight,
             0, 0, module, 0);
         if (_hwnd == 0)
@@ -252,7 +252,7 @@ internal sealed class InputWindow : IDisposable
                 AppendMenuW(graphSpan, _settings.GraphTimeSpanSeconds == seconds ? MfChecked : 0,
                     GraphSpanBaseCommand + (uint)i, $"{seconds} seconds");
             }
-            AppendMenuW(menu, MfPopup, (nuint)graphSpan, "Graph time span");
+            AppendMenuW(menu, MfPopup, (nuint)graphSpan, "Chart time span");
             for (int i = 0; i < WidgetSettings.AvailableChartWidths.Count; i++)
             {
                 string width = WidgetSettings.AvailableChartWidths[i];

@@ -1,17 +1,91 @@
-# AC EVO Driver Inputs Direct2D PoC
+# Assetto Corsa EVO Driver Inputs Widget
 
-A native Win32, always-on-top, borderless window that renders with Vortice.Direct2D1. It has no WPF dependency. The pedal graph remains visible when Assetto Corsa EVO is not running or no session is active.
+A small, always-on-top native Win32 overlay for **Assetto Corsa EVO** showing driver inputs. It uses Direct2D and DirectWrite to display:
 
-The PoC copies `ACEvoTelemetryReader.cs` and its `DebugLog.cs` dependency from ACEvo-Simple-Telemetry. `PedalGraphControl.cs` and `SteeringWheelControl.cs` recreate those WPF controls with Direct2D: the graph shows throttle, brake, and clutch history, with purple TC and yellow ABS segments; the wheel shows steering rotation. The compact layout places the graph first, then clutch, brake, and throttle gauges, gear, and steering wheel. Dark and light colors match the theme definitions in ACEvo-Simple-Telemetry.
+- Steering-wheel rotation and angle
+- Current gear
+- Vertical throttle, brake, and clutch gauges
+- A scrolling graph for the same three pedal inputs, with the throttle trace turning **purple** while TC is active and the brake trace turning **yellow** while ABS is active
 
-## Run
+Right-click the overlay to configure:
 
-Requires Windows and the .NET 10 SDK:
+- Which pedal inputs are shown
+- Graph history from 5–30 seconds
+- Small, Medium, or Large graph width
+- Complete overlay scale from 50–250%
+- Dark or light theme
+- Telemetry polling and redraw at 30 or 60 Hz
+
+The graph remains visible outside a driving session, with neutral gauges when the game is absent. Drag anywhere to move the window. Preferences and window position are saved automatically in `%LOCALAPPDATA%\ACEvoDriverInput\settings.json`.
+
+## Installation
+
+1. Open the [latest GitHub Release](https://github.com/johnliu55tw/acevo-driver-input-widget/releases/latest) and download the Windows x64 **`*-self-contained.exe`** file. It is a compressed standalone build and needs no separate .NET installation.
+2. Save the executable wherever you want to keep the app and run it. There is no installer. To update, download the new version from Releases and replace the old executable.
+3. Start Assetto Corsa EVO and enter a driving session. Run the game and overlay in the same Windows session and at compatible privilege levels (normally, neither as Administrator).
+
+Use **Borderless Fullscreen** or **Windowed** display mode in AC EVO. Windows cannot show a normal desktop overlay above a true exclusive-fullscreen DirectX surface.
+
+Version history and release notes are on the [Releases page](https://github.com/johnliu55tw/acevo-driver-input-widget/releases).
+
+## Run from source
+
+Requirements: Windows and the .NET 10 SDK.
 
 ```powershell
 dotnet run --project .\ACEvo-Driver-Input.csproj
 ```
 
-The window's position is saved in the settings file when it is moved or closed and restored on the next launch if its display is available.
+Start Assetto Corsa EVO and enter a driving session. There is no in-game telemetry option to enable. The game and overlay must run in the same Windows session and at compatible privilege levels (normally, run both without Administrator elevation).
 
-The window opens even without the game and shows an empty graph and neutral gauges. When AC EVO's shared-memory mappings are available, values update automatically. Drag anywhere to move the window. Right-click to choose visible pedals, zoom from 50% to 250%, Dark or Light theme, a 5, 10, 15, 20, or 30-second graph span, Small, Medium, or Large chart width, and a 30 or 60 Hz update rate. The update rate controls both telemetry polling and redraws. The graph's vertical grid marks each second at every width and time span. **Zoom in** and **Zoom out** step through the listed levels. Choose **Exit** to close it. Preferences are saved in `%LOCALAPPDATA%\ACEvoDriverInput\settings.json`.
+The overlay opens even without the game. During a driving session, the graph and gauges update automatically from AC EVO's shared memory. Right-click to change settings or choose **Exit**. **Zoom in** and **Zoom out** step through the available scale levels.
+
+## Releasing
+
+Finish and push changes on `main`, then create and push a version tag:
+
+```powershell
+git switch main
+git pull --ff-only
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+Replace `v0.1.0` with the next `vX.Y.Z` version. Pushing the tag runs the [release workflow](.github/workflows/release.yml), which validates the project, builds the self-contained Windows x64 executable, and publishes it in the matching GitHub Release. The tag supplies the version in the executable metadata and download name. GitHub Release notes serve as the changelog; edit the generated notes to add a short user-facing summary when needed.
+
+If a release workflow fails, fix and push the workflow on `main`, then open **Actions → Release → Run workflow**, select `main`, and enter the existing tag to retry it. The retry builds the original tagged source with the corrected workflow; do not move or recreate the tag.
+
+## Telemetry implementation
+
+AC EVO 0.6 introduced its updated shared-memory output. This application opens both `Local\acevo_pmf_physics` and `Local\acevo_pmf_graphics` read-only with `MemoryMappedFile.OpenExisting`; it never creates mappings when the game is absent.
+
+Only the fields required by this overlay are read:
+
+| Block | Byte offset | Type | Field |
+| --- | ---: | --- | --- |
+| Physics | 0 | `int32` | packet id |
+| Physics | 4 | `float` | `gas` (`0..1`) |
+| Physics | 8 | `float` | `brake` (`0..1`) |
+| Physics | 204 | `float` | `tc` intervention intensity |
+| Physics | 252 | `float` | `abs` intervention intensity |
+| Physics | 364 | `float` | `clutch` (`0..1`) |
+| Physics | 672 | `int32` | `tcInAction` |
+| Physics | 676 | `int32` | `absInAction` |
+| Graphics | 0 | `int32` | packet id |
+| Graphics | 4 | `int32` | `status` (`0=off`, `1=replay`, `2=live`, `3=pause`) |
+| Graphics | 45 | `bool` | `tc_active` |
+| Graphics | 46 | `bool` | `abs_active` |
+| Graphics | 68 | `int16` | `gear_int` (`0=R`, `1=N`, `2=1st`, …) |
+| Graphics | 156 | `int32` | signed `steer_degrees` |
+
+Pedals come from physics while steering uses the graphics block's degree value. The raw physics clutch value is inverted at the reader boundary so the displayed clutch follows the overlay's pedal convention. TC and ABS activity are merged from the physics `*InAction` flag, physics intervention intensity, and graphics active flag so any source can mark an intervention.
+
+The reader checks each block's packet id before and after its own snapshot. If either block is being updated, that combined sample is skipped. The graph adds samples during live and paused states, and the current gauges also display values during replay.
+
+## Research sources
+
+- [Kunos/505 Games shared-memory documentation on Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=3707421508) — canonical mapping names and data layout.
+- [Assetto Corsa EVO 0.6 announcement](https://assettocorsa.gg/assetto-corsa-evo-early-access-06-now-available/) — confirms the updated shared-memory library and official telemetry support.
+- [Community field-by-field transcription and validation](https://github.com/albertowd/live-telemetry-evo/blob/develop/docs/SHARED_MEMORY.md) by [albertowd](https://github.com/albertowd) — the source for the detailed telemetry offsets, units, packing, and concurrency notes used here, cross-checked against the official guide.
+
+AC EVO is still evolving, so a future shared-memory version may require updating the documented offsets.
