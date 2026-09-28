@@ -17,6 +17,8 @@ internal sealed class WidgetSettings
     public bool ShowThrottle { get; set; } = true;
     public bool ShowBrake { get; set; } = true;
     public bool ShowClutch { get; set; } = true;
+    public bool ShowGear { get; set; } = true;
+    public bool ShowSteering { get; set; } = true;
     public int ZoomPercent { get; set; } = 100;
     public int GraphTimeSpanSeconds { get; set; } = 10;
     public int UpdateRateHz { get; set; } = 30;

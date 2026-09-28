@@ -11,6 +11,7 @@ A small, always-on-top native Win32 overlay for **Assetto Corsa EVO** showing dr
 Right-click the overlay to configure:
 
 - Which pedal inputs are shown
+- Whether gear and steering are shown
 - Graph time span from 5–30 seconds
 - Graph width: Small, Medium, or Large
 - Complete overlay scale from 50–250%

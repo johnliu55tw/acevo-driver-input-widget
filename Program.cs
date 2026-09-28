@@ -56,6 +56,8 @@ internal sealed class InputWindow : IDisposable
     private const uint ThrottleCommand = 10;
     private const uint BrakeCommand = 11;
     private const uint ClutchCommand = 12;
+    private const uint GearCommand = 13;
+    private const uint SteeringCommand = 14;
     private const uint ZoomInCommand = 20;
     private const uint ZoomOutCommand = 21;
     private const uint ZoomBaseCommand = 100;
@@ -187,7 +189,16 @@ internal sealed class InputWindow : IDisposable
         }
     }
 
-    private int LogicalWindowWidth => WindowWidth + _settings.ChartWidthPixels - WidgetSettings.MediumChartWidthPixels;
+    private int LogicalWindowWidth
+    {
+        get
+        {
+            int panelWidth = (_settings.ShowGear ? 97 : 0) + (_settings.ShowSteering ? 160 : 0);
+            if (_settings.ShowGear && _settings.ShowSteering) panelWidth += 8;
+            return WindowWidth + _settings.ChartWidthPixels - WidgetSettings.MediumChartWidthPixels
+                - 277 + (panelWidth > 0 ? 12 + panelWidth : 0);
+        }
+    }
     private int ScaledWidth => (int)Math.Round(LogicalWindowWidth * _settings.ZoomPercent / 100.0);
     private int ScaledHeight => (int)Math.Round(WindowHeight * _settings.ZoomPercent / 100.0);
 
@@ -262,6 +273,8 @@ internal sealed class InputWindow : IDisposable
             AppendMenuW(pedals, _settings.ShowBrake ? MfChecked : 0, BrakeCommand, "Brake");
             AppendMenuW(pedals, _settings.ShowClutch ? MfChecked : 0, ClutchCommand, "Clutch");
             AppendMenuW(menu, MfPopup, (nuint)pedals, "Pedal inputs");
+            AppendMenuW(menu, _settings.ShowGear ? MfChecked : 0, GearCommand, "Gear");
+            AppendMenuW(menu, _settings.ShowSteering ? MfChecked : 0, SteeringCommand, "Steering");
 
             AppendMenuW(zoom, 0, ZoomOutCommand, "Zoom out");
             AppendMenuW(zoom, 0, ZoomInCommand, "Zoom in");
@@ -327,6 +340,8 @@ internal sealed class InputWindow : IDisposable
             case ThrottleCommand: _settings.ShowThrottle = !_settings.ShowThrottle; break;
             case BrakeCommand: _settings.ShowBrake = !_settings.ShowBrake; break;
             case ClutchCommand: _settings.ShowClutch = !_settings.ShowClutch; break;
+            case GearCommand: _settings.ShowGear = !_settings.ShowGear; break;
+            case SteeringCommand: _settings.ShowSteering = !_settings.ShowSteering; break;
             case DarkThemeCommand: _settings.Theme = "Dark"; break;
             case LightThemeCommand: _settings.Theme = "Light"; break;
             case ZoomInCommand:

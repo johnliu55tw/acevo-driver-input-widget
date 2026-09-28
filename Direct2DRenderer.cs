@@ -20,6 +20,8 @@ internal sealed class Direct2DRenderer : IDisposable
     private readonly IDWriteTextFormat _angleFormat;
     private ThemePalette _palette;
     private float _zoomScale;
+    private bool _showGear;
+    private bool _showSteering;
     private ID2D1HwndRenderTarget? _target;
     private GraphBrushes? _graphBrushes;
     private SteeringBrushes? _wheelBrushes;
@@ -58,6 +60,8 @@ internal sealed class Direct2DRenderer : IDisposable
         _graph.ShowThrottle = settings.ShowThrottle;
         _graph.ShowBrake = settings.ShowBrake;
         _graph.ShowClutch = settings.ShowClutch;
+        _showGear = settings.ShowGear;
+        _showSteering = settings.ShowSteering;
         _graph.TimeSpanSeconds = settings.GraphTimeSpanSeconds;
         ThemePalette palette = settings.IsLightTheme ? ThemePalette.Light : ThemePalette.Dark;
         if (_palette != palette)
@@ -102,12 +106,14 @@ internal sealed class Direct2DRenderer : IDisposable
         const float panelHeight = 180;
         const float graphX = 12;
         int visiblePedals = (_graph.ShowClutch ? 1 : 0) + (_graph.ShowBrake ? 1 : 0) + (_graph.ShowThrottle ? 1 : 0);
-        float gearX = logicalWidth - 277;
+        float panelWidth = (_showGear ? 97 : 0) + (_showSteering ? 160 : 0)
+            + (_showGear && _showSteering ? 8 : 0);
+        float panelX = logicalWidth - 12 - panelWidth;
+        float graphRight = panelX - (panelWidth > 0 ? 12 : 0);
         float graphWidth = Math.Max(1, visiblePedals == 0
-            ? gearX - graphX - 12
-            : gearX - graphX - 24 - (visiblePedals * 40 - 6));
+            ? graphRight - graphX
+            : graphRight - graphX - 12 - (visiblePedals * 40 - 6));
         float gaugeX = graphX + graphWidth + 12;
-        float wheelX = gearX + 97 + 8;
 
         _graph.Draw(target, graphBrushes, graphX, top, graphWidth, panelHeight);
         if (_graph.ShowClutch)
@@ -122,8 +128,13 @@ internal sealed class Direct2DRenderer : IDisposable
         }
         if (_graph.ShowThrottle)
             DrawGauge(target, gaugeX, top, panelHeight, displayed?.Throttle ?? 0, graphBrushes.Throttle);
-        DrawGear(target, gearX, top, panelHeight, displayed);
-        DrawWheel(target, wheelX, top, panelHeight, displayed);
+        if (_showGear)
+        {
+            DrawGear(target, panelX, top, panelHeight, displayed);
+            panelX += 97 + (_showSteering ? 8 : 0);
+        }
+        if (_showSteering)
+            DrawWheel(target, panelX, top, panelHeight, displayed);
 
         if (target.EndDraw().Failure)
         {
